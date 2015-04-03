@@ -58,8 +58,12 @@ public class NodeScript
     private String workingDir;
     private Map<String, String> environment;
     private String nodeVersion = NodeEnvironment.DEFAULT_NODE_VERSION;
+    
+    private boolean debugging = false;
 
-    NodeScript(NodeEnvironment env, String scriptName, File script, String[] args)
+   
+
+	NodeScript(NodeEnvironment env, String scriptName, File script, String[] args)
     {
         this.env = env;
         this.scriptName = scriptName;
@@ -85,6 +89,13 @@ public class NodeScript
         this.sandbox = env.getSandbox();
     }
 
+    public boolean isDebugging() {
+		return debugging;
+	}
+
+	public void setDebugging(boolean debugging) {
+		this.debugging = debugging;
+	}
     /**
      * Run the script and return a Future denoting its status. The script is treated exactly as any other
      * Node.js program -- that is, it runs in a separate thread, and the returned future may be used to
