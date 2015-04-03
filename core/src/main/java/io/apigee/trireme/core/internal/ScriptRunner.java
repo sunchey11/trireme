@@ -42,20 +42,6 @@ import io.apigee.trireme.kernel.fs.AdvancedFilesystem;
 import io.apigee.trireme.kernel.fs.BasicFilesystem;
 import io.apigee.trireme.kernel.net.NetworkPolicy;
 import io.apigee.trireme.kernel.net.SelectorHandler;
-import org.mozilla.javascript.Context;
-import org.mozilla.javascript.ContextAction;
-import org.mozilla.javascript.EcmaError;
-import org.mozilla.javascript.EvaluatorException;
-import org.mozilla.javascript.Function;
-import org.mozilla.javascript.JavaScriptException;
-import org.mozilla.javascript.RhinoException;
-import org.mozilla.javascript.Script;
-import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
-import org.mozilla.javascript.ScriptableObject;
-import org.mozilla.javascript.Undefined;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.File;
@@ -80,6 +66,23 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.mozilla.javascript.Context;
+import org.mozilla.javascript.ContextAction;
+import org.mozilla.javascript.ContextFactory;
+import org.mozilla.javascript.EcmaError;
+import org.mozilla.javascript.EvaluatorException;
+import org.mozilla.javascript.Function;
+import org.mozilla.javascript.JavaScriptException;
+import org.mozilla.javascript.RhinoException;
+import org.mozilla.javascript.Script;
+import org.mozilla.javascript.ScriptRuntime;
+import org.mozilla.javascript.Scriptable;
+import org.mozilla.javascript.ScriptableObject;
+import org.mozilla.javascript.Undefined;
+import org.mozilla.javascript.tools.debugger.Main;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class actually runs the script.
@@ -129,8 +132,10 @@ public class ScriptRunner
     private boolean             forceRepl;
 
     private ScriptableObject    scope;
+    
 
-    public ScriptRunner(NodeScript so, NodeEnvironment env, Sandbox sandbox,
+  
+	public ScriptRunner(NodeScript so, NodeEnvironment env, Sandbox sandbox,
                         File scriptFile, String[] args)
     {
         this(so, env, sandbox, args);
@@ -325,6 +330,7 @@ public class ScriptRunner
     {
         this.parentProcess = parentProcess;
     }
+    
 
     /**
      * We use this when spawning child scripts to avoid sending them messages before they are ready.
@@ -677,7 +683,28 @@ public class ScriptRunner
     public ScriptStatus call()
         throws NodeException
     {
-        Object ret = env.getContextFactory().call(new ContextAction()
+      
+        
+        ContextFactory contextFactory = env.getContextFactory();
+        contextFactory.call(new ContextAction(){
+        	 @Override
+             public Object run(Context cx)
+             {
+        		 // All scripts get their own global scope. This is a lot safer than sharing them in case a script wants
+                 // to add to the prototype of String or Date or whatever (as they often do)
+                 // This uses a bit more memory and in theory slows down script startup but in practice it is
+                 // a drop in the bucket.
+                 scope = cx.initStandardObjects();
+        		 return null;
+             }
+        });
+        //debugger does not work when Main.mainEmbedded(...) is put in to contextFactory.call(...).
+        //I don't know why.
+        if(getScriptObject().isDebugging()){
+        	Main.mainEmbedded(env.getContextFactory(), scope, "trireme debug");
+        }
+
+		Object ret = contextFactory.call(new ContextAction()
         {
             @Override
             public Object run(Context cx)
@@ -703,11 +730,7 @@ public class ScriptRunner
         now = System.currentTimeMillis();
 
         try {
-            // All scripts get their own global scope. This is a lot safer than sharing them in case a script wants
-            // to add to the prototype of String or Date or whatever (as they often do)
-            // This uses a bit more memory and in theory slows down script startup but in practice it is
-            // a drop in the bucket.
-            scope = cx.initStandardObjects();
+           
 
             // Lazy first-time init of the node version.
             registry.loadRoot(cx);
@@ -738,8 +761,20 @@ public class ScriptRunner
             // Run "trireme.js," which is our equivalent of "node.js". It returns a function that takes
             // "process". When done, we may have ticks to execute.
             Script mainScript = registry.getMainScript();
-            Function main = (Function)mainScript.exec(cx, scope);
+            Function main = null;
+			if (getScriptObject().isDebugging()) {
+				// try to find script source
+				String src = Utils.getScriptSource(mainScript);
+				if (src != null) {
+					Object ret = cx.evaluateString(scope, src, mainScript
+							.getClass().getName(), 1, null);
 
+					main = (Function) ret;
+				}
+			}
+            if(main == null){
+            	main = (Function)mainScript.exec(cx, scope);
+            }
             boolean timing = startTiming(cx);
             try {
                 main.call(cx, scope, scope, new Object[] { process });
