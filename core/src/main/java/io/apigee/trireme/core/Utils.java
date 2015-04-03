@@ -24,6 +24,7 @@ package io.apigee.trireme.core;
 import io.apigee.trireme.kernel.Charsets;
 import io.apigee.trireme.core.internal.NodeOSException;
 import io.apigee.trireme.kernel.ErrorCodes;
+import io.apigee.trireme.kernel.OSException;
 import io.apigee.trireme.kernel.util.BufferUtils;
 import io.apigee.trireme.kernel.util.StringUtils;
 import org.mozilla.javascript.Context;
@@ -208,11 +209,30 @@ public class Utils
     }
 
     /**
+     * Create an exception that may be thrown from Java code, causing an exception and an Error object
+     * to be thrown in JavaScript.
+     */
+    public static RhinoException makeError(Context cx, Scriptable scope, OSException e)
+    {
+        return new JavaScriptException(makeErrorObject(cx, scope, e));
+    }
+
+    /**
      * Create a JavaScript Error object, which may be passed to a function that is expecting one.
      */
     public static Scriptable makeErrorObject(Context cx, Scriptable scope, NodeOSException e)
     {
         return makeErrorObject(cx, scope, e.getMessage(), e.getCode(), e.getPath());
+    }
+
+    /**
+     * Create a JavaScript Error object, which may be passed to a function that is expecting one.
+     */
+    public static Scriptable makeErrorObject(Context cx, Scriptable scope, OSException e)
+    {
+        return makeErrorObject(cx, scope, e.getMessage(),
+                               ErrorCodes.get().toString(e.getCode()),
+                               e.getPath());
     }
 
     /**
@@ -300,4 +320,31 @@ public class Utils
     {
         return StringUtils.unquote(s);
     }
+    
+     /**
+     * Find script source by the fullname of script class. the script source must ended with '.js' extension.
+     * @param script script instance
+     * @return if found script source, return source string. if not found, return null.
+     */
+    public static String getScriptSource(Script script) {
+		Class<? extends Script> clazz = script.getClass();
+		String name = clazz.getSimpleName();
+
+		InputStream is = clazz.getResourceAsStream(name + ".js");
+		try {
+
+			if (is != null) {
+				String src = Utils.readStream(is);
+				return src;
+			}
+		} catch (IOException e) {
+
+		} finally {
+			try {
+				is.close();
+			} catch (IOException ignore) {
+			}
+		}
+		return null;
+	}
 }
