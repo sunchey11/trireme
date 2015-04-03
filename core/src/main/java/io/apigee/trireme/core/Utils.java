@@ -320,4 +320,31 @@ public class Utils
     {
         return StringUtils.unquote(s);
     }
+    
+     /**
+     * Find script source by the fullname of script class. the script source must ended with '.js' extension.
+     * @param script script instance
+     * @return if found script source, return source string. if not found, return null.
+     */
+    public static String getScriptSource(Script script) {
+		Class<? extends Script> clazz = script.getClass();
+		String name = clazz.getSimpleName();
+
+		InputStream is = clazz.getResourceAsStream(name + ".js");
+		try {
+
+			if (is != null) {
+				String src = Utils.readStream(is);
+				return src;
+			}
+		} catch (IOException e) {
+
+		} finally {
+			try {
+				is.close();
+			} catch (IOException ignore) {
+			}
+		}
+		return null;
+	}
 }
